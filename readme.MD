@@ -2,7 +2,7 @@
 
 PyTorch implementation of InstructAny2Pix: Flexible Visual Editing via Multimodal Instruction Following
 
-Shufan Li1*  Harkanwar Singh   Aditya Grover 
+Shufan Li Harkanwar Singh   Aditya Grover 
 
 University of California, Los Angeles
 
