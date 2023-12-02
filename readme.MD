@@ -1,7 +1,10 @@
 # InstructAny2Pix: Flexible Visual Editing via Multimodal Instruction Following
 
-[DEMO](http://170.106.137.89:8888)
-[HuggingFace](https://huggingface.co/jacklishufan/instructany2pix/tree/main)
+
+    [DEMO](http://170.106.137.89:8888)
+    [Project Page](http://homepage.jackli.org/projects/instructany2pix.html)
+    [Paper](http://homepage.jackli.org/projects/Instructany2Pix.pdf)
+    [HuggingFace](https://huggingface.co/jacklishufan/instructany2pix/tree/main)
 
 PyTorch implementation of InstructAny2Pix: Flexible Visual Editing via Multimodal Instruction Following
 
