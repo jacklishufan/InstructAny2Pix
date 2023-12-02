@@ -1,0 +1,27 @@
+use_clip: on
+model:
+  base_learning_rate: 4.5e-06
+  target: instructany2pix.llm.model.vae.clip.TensorLoader
+  params:
+    embed_dim: 1024
+    n_embed: 1024
+processor: npz
+
+data:
+  target: main.DataModuleFromConfig
+  
+  params:
+    batch_size: 8
+    num_workers: 16
+    wrap: true
+    train:
+      target: ldm.data.openimages.FullOpenImagesTrain
+      params:
+        crop_size: 256
+    validation:
+      target: ldm.data.openimages.FullOpenImagesValidation
+      params:
+        crop_size: 256
+
+ckpt: null
+image_size: 128

@@ -1,0 +1,21 @@
+accelerate==0.21.0
+datasets==2.14.6
+diffusers==0.22.0
+transformers==4.34.1
+timm==0.6.13
+tokenizers==0.14.1
+torchlibrosa
+gradio
+pytorchvideo
+ftfy
+einops
+pytorch_lightning==2.1.2 
+sentencepiece==0.1.99
+protobuf==4.25.1
+bitsandbytes==0.41.2
+# torch
+# torchaudio
+# torchlibrosa
+# torchmetrics
+# torchvideo
+# torchvisio
