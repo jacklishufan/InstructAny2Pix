@@ -1,5 +1,8 @@
 # InstructAny2Pix: Flexible Visual Editing via Multimodal Instruction Following
 
+[DEMO](http://170.106.137.89:8888)
+[HuggingFace](https://huggingface.co/jacklishufan/instructany2pix/tree/main)
+
 PyTorch implementation of InstructAny2Pix: Flexible Visual Editing via Multimodal Instruction Following
 
 Shufan Li, Harkanwar Singh, Aditya Grover 
@@ -32,5 +35,24 @@ python serve.py
 
 Alternatively, one can check `demo.ipynb` for a notebook demo
 
+## Q&A
 
+### Where can I find checkpoints
+See Huggingface Link at the top
+
+### The edit is not what I want
+
+We are working on improving the roboustness of the method. At the moment, there are ways you can contorl the output.
+
+#### It changes little
+Try to Increase `alpha`, `norm`, decrease `h_0`
+
+#### It changes too much
+Try to decrese `alpha`, `norm`, decrese `h_0`
+
+#### Low quality outputs
+Try to Increase `refinement`, `h_2`, `steps`
+
+#### Content of image is not intended
+Try to change `seed` and increase `h_1`
 
