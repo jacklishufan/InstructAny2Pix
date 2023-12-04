@@ -13,7 +13,7 @@ else:
 VALID_MARKS = ['[image1]','[image2]','[image3]','[audio1]','[audio2]','[audio3]']
 def run(image_input1,image_input2,image_input3,
         audio_input1,audio_input2,audio_input3,instruction,
-        alpha,h0,h1,h2,norm,refinement,num_steps=50,seed=0):
+        alpha,h0,h1,h2,norm,refinement,num_steps=50,seed=0,mode='default'):
     num_steps = int(num_steps)
     print(image_input1,image_input2,image_input3,audio_input1,audio_input2,audio_input3,
           instruction)
@@ -40,7 +40,7 @@ def run(image_input1,image_input2,image_input3,
     torch.manual_seed(seed)
     res0,res,output_caption = pipe(instruction,mm_data,
                                    alpha = alpha,h=[h0,h1,h2],
-                                   norm=norm,refinement=refinement,num_inference_steps=num_steps)
+                                   norm=norm,refinement=refinement,num_inference_steps=num_steps,diffusion_mode=mode)
     return output_caption,res
 
 #demo = gr.Interface(fn=greet, inputs="text", outputs="text")
@@ -81,6 +81,10 @@ if __name__ == "__main__":
             h1 = gr.Slider(minimum=0.0,maximum=3.0,value=0.6,step=0.05,label='h1')
             h2 = gr.Slider(minimum=0.0,maximum=3.0,value=0.4,step=0.05,label='h2')
         with gr.Row():
+            mode = gr.Dropdown(
+                choices=['ipa','ipa_lcm','default']
+            )
+        with gr.Row():
             launch_button = gr.Button("Run")
         with gr.Row():
             out_text = gr.Text(interactive=False)
@@ -101,6 +105,6 @@ if __name__ == "__main__":
         launch_button.click(run,inputs=[
             image_input1,image_input2,image_input3,
             audio_input1,audio_input2,audio_input3,instruction,
-             alpha,h0,h1,h2,norm,refinement,num_steps,seed
+             alpha,h0,h1,h2,norm,refinement,num_steps,seed,mode
         ],outputs=[out_text,out_img],api_name='run')
     demo.queue(max_size=20).launch(show_api=False,share=True,server_name="0.0.0.0")

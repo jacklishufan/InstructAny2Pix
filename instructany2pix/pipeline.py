@@ -10,10 +10,10 @@ from .prior.model import MODALITY
 import transformers
 import torch
 from instructany2pix.llm.mm_utils import KeywordsStoppingCriteria
-from .diffusion.sdxl_img2img_pipeline import build_sdxl
+from .diffusion.sdxl_img2img_pipeline import build_sdxl,build_sdxl_ip,FakeEncoder
 from instructany2pix.llm.conversation import conv_templates, SeparatorStyle
 import torchaudio
-from diffusers import StableDiffusionXLImg2ImgPipeline
+from diffusers import StableDiffusionXLImg2ImgPipeline,LCMScheduler
 def build_lm(ckpt='ckpts/llm'):
     any2pix_tokenizer = transformers.AutoTokenizer.from_pretrained(
         ckpt,subfolder='tokenizer'
@@ -93,6 +93,8 @@ class InstructAny2PixPipeline:
         model = model.eval()
         # model.load_state_dict(torch.load('../diffusion_prior.bin',map_location='cpu'))
         pipe = build_sdxl(ckpt=os.path.join(ckpt,'sdxl'))
+        pipe_lcm = build_sdxl_ip(lcm_lora=True)
+        #pipe_lcm.enable_model_cpu_offload()
 
         new_sch = DDIMScheduler.from_config(pipe.scheduler.config)
         pipe_inversion = SDXLDDIMPipeline.from_pretrained(
@@ -114,6 +116,8 @@ class InstructAny2PixPipeline:
         self.model = model
         self.pipe_inversion = pipe_inversion
         self.pipe = pipe.to('cuda').to(torch.float16)
+        self.pipe_lcm = pipe_lcm.to('cuda').to(torch.float16)
+        self.pipe_lcm.image_encoder = FakeEncoder().to('cuda').to(torch.float16)
         self.model_imb = model_imb
         #self.audioldm_dict = audioldm_dict
         self.any2pix_tokenizer = any2pix_tokenizer
@@ -216,7 +220,32 @@ class InstructAny2PixPipeline:
         n = n0 * alpha + n1 * (1-alpha)
         return ll / ll.norm() * n
     
-    def __call__(self, inst,mm_data,alpha = 0.7,h=[0.0,0.4,1.0],norm=20.0,refinement=0.5,llm_only=False,num_inference_steps=25,use_cache=False,debug=False) -> Any:
+
+    def enable_lcm(self):
+        # lcm_lora_id = "latent-consistency/lcm-lora-sdxl"
+        self.pipe_lcm.scheduler = LCMScheduler.from_config(self.pipe_lcm.scheduler.config)
+        self.pipe_lcm.enable_lora()
+
+    def disable_lcm(self):
+        #lcm_lora_id = "latent-consistency/lcm-lora-sdxl"
+        self.pipe_lcm.scheduler = self.pipe.scheduler
+        self.pipe_lcm.disable_lora()
+    
+    
+    def __call__(self, inst,mm_data,alpha = 0.7,h=[0.0,0.4,1.0],norm=20.0,refinement=0.5,llm_only=False,num_inference_steps=25,
+                 use_cache=False,debug=False,diffusion_mode='default') -> Any:
+        if diffusion_mode == 'ipa':
+            self.disable_lcm()
+            self.pipe_inversion.unet = self.pipe_lcm.unet
+            self.pipe_inversion.scheduler = DDIMScheduler.from_config(self.pipe_inversion.scheduler.config)
+        elif diffusion_mode == 'ipa_lcm':
+            self.disable_lcm()
+            self.pipe_inversion.unet = self.pipe_lcm.unet
+            self.pipe_inversion.scheduler = LCMScheduler.from_config(self.pipe_lcm.scheduler.config)
+        else:
+            self.disable_lcm()
+            self.pipe_inversion.unet = self.pipe.unet
+            self.pipe_inversion.scheduler = DDIMScheduler.from_config(self.pipe_inversion.scheduler.config)
         image_embeds,base_embed,output_caption,base_img_path = self.forward_llm(inst,mm_data,use_cache=use_cache)
         self.cache = image_embeds,base_embed,output_caption,base_img_path
         if llm_only:
@@ -242,8 +271,14 @@ class InstructAny2PixPipeline:
         extra_kwargs = {}
 
         null_prompt_embeds = torch.zeros(1,768)
-        latent_inv = self.pipe_inversion.inverse(num_inference_steps=num_inference_steps,
-                                            prompt_embeds=torch.zeros(1,1,1024),pooled_prompt_embeds=null_prompt_embeds,image=img_base.resize((1024,1024)))
+        if diffusion_mode == 'ipa':
+            latent_inv = self.pipe_inversion.inverse(num_inference_steps=num_inference_steps,prompt='',image=img_base.resize((1024,1024)))
+        elif diffusion_mode == 'ipa_lcm':
+            num_inference_steps =  10
+            latent_inv = self.pipe_inversion.inverse(num_inference_steps=num_inference_steps,prompt='',image=img_base.resize((1024,1024)))
+        else:
+            latent_inv = self.pipe_inversion.inverse(num_inference_steps=num_inference_steps,
+                                                prompt_embeds=torch.zeros(1,1,1024),pooled_prompt_embeds=null_prompt_embeds,image=img_base.resize((1024,1024)))
         latent_inv = latent_inv.images.cpu()
         #alpha = 0.7
         latent_inv = self.polar_intrtpolate(
@@ -253,12 +288,30 @@ class InstructAny2PixPipeline:
         )
         extra_kwargs['latents']= latent_inv # latent_inv
         # pipe = pipe.to('cuda').to(torch.float16)
-        images = self.pipe(original_size=(1024,1024),
-        height=1024,
-        width=1024,
-        prompt_embeds=latent_la.to(torch.bfloat16).cuda(),
-        pooled_prompt_embeds=null_prompt_embeds.to(torch.bfloat16).cuda(), generator=None,
-            num_inference_steps=num_inference_steps,guidance_scale=10,**extra_kwargs)
+        if diffusion_mode == 'ipa':
+            images = self.pipe_lcm(
+                prompt='best quality, high quality'+output_caption, 
+                negative_prompt="monochrome, lowres, bad anatomy, worst quality, low quality", 
+                ip_adapter_image=latent_la,
+                num_inference_steps=num_inference_steps,
+                guidance_scale=10,
+                **extra_kwargs)
+        elif diffusion_mode == 'ipa_lcm':
+            self.enable_lcm()
+            images = self.pipe_lcm(
+                prompt='best quality, high quality'+output_caption, 
+                negative_prompt="monochrome, lowres, bad anatomy, worst quality, low quality", 
+                ip_adapter_image=latent_la,
+                num_inference_steps=4,
+                guidance_scale=1,
+                **extra_kwargs)
+        else:
+            images = self.pipe(original_size=(1024,1024),
+            height=1024,
+            width=1024,
+            prompt_embeds=latent_la.to(torch.bfloat16).cuda(),
+            pooled_prompt_embeds=null_prompt_embeds.to(torch.bfloat16).cuda(), generator=None,
+                num_inference_steps=num_inference_steps,guidance_scale=10,**extra_kwargs)
         non_refined =  images[0][0]
         if refinement > 0:
             oo = self.piperf(image=images[0][0],prompt=output_caption+',high quality,well-formed,award-winning',strength=refinement,).images[0]
@@ -267,7 +320,14 @@ class InstructAny2PixPipeline:
         if not debug:
             msg = "SUCCESS!"
         else:
-            msg = output_caption
+            msg = dict(output_caption=output_caption,
+                       latent_inv=latent_inv,
+                       img_base=img_base,
+                       latent_la=latent_la,
+                       base_embed=base_embed,
+                       y=y[0] / y[0].norm()
+            )
+
         return non_refined,oo,msg
     
 def load_json(fp):

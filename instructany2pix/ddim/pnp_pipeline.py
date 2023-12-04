@@ -127,6 +127,7 @@ class SDXLDDIMPipeline(StableDiffusionXLImg2ImgPipeline):
         target_size: Tuple[int, int] = None,
         aesthetic_score: float = 6.0,
         negative_aesthetic_score: float = 2.5,
+        image_embeds=None,
         #clip_skip=None,
     ):
         self.scheduler = DDIMScheduler.from_config(self.scheduler.config)
@@ -242,7 +243,9 @@ class SDXLDDIMPipeline(StableDiffusionXLImg2ImgPipeline):
         add_text_embeds = add_text_embeds.to(device)
         add_time_ids = add_time_ids.to(device)
 
-        added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
+        if image_embeds is None:
+            image_embeds = torch.zeros(1,1024).to(latents)
+        added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids,"image_embeds":image_embeds}
         prev_timestep = None
 
         for t in tqdm(reversed(self.scheduler.timesteps)):
@@ -312,6 +315,7 @@ class SDXLPNPPipeline(StableDiffusionXLPipeline):
         original_size: Optional[Tuple[int, int]] = None,
         crops_coords_top_left: Tuple[int, int] = (0, 0),
         target_size: Optional[Tuple[int, int]] = None,
+        image_embeds = None,
     ):
         height = height or self.default_sample_size * self.vae_scale_factor
         width = width or self.default_sample_size * self.vae_scale_factor
@@ -451,10 +455,12 @@ class SDXLPNPPipeline(StableDiffusionXLPipeline):
                 )
 
                 # predict the noise residual
-
+                if image_embeds is None:
+                    image_embeds = torch.zeros(1,1024).to(latents)
                 added_cond_kwargs = {
                     "text_embeds": add_text_embeds[:1, ...],
                     "time_ids": add_time_ids[:1, ...],
+                    "image_embeds":image_embeds,
                 }
                 noise_pred_text, feats = self.unet(
                     latent_model_input[:1, ...],

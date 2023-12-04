@@ -8,6 +8,7 @@ from diffusers import (
     AutoencoderKL,
     DDPMScheduler,
     StableDiffusionXLPipeline,
+    LCMScheduler,
     UNet2DConditionModel,
     StableDiffusionXLImg2ImgPipeline
 )
@@ -15,6 +16,8 @@ from typing import Any, Dict, Optional, Tuple, Union
 from torch import nn
 from torch import FloatTensor,Tensor
 import torch
+from transformers import CLIPVisionModelWithProjection
+from diffusers.models.modeling_utils import ModelMixin
 
 
 class UnCLipXL(UNet2DConditionModel):
@@ -67,4 +70,34 @@ def build_sdxl(pretrained = "stabilityai/stable-diffusion-xl-base-1.0",
         #revision=args.revision,
         torch_dtype=torch.float16,
     )
+    return pipeline
+
+from dataclasses import dataclass
+@dataclass
+class FakeImage:
+    image_embeds: torch.Tensor
+
+class FakeEncoder(ModelMixin):
+
+    def __init__(self):
+        super().__init__()
+        self.fake_layer = torch.nn.Linear(1,1)
+
+    def forward(self,x):
+        return FakeImage(x)
+    
+def build_sdxl_ip(lcm_lora=True):
+    pipeline = StableDiffusionXLPipeline .from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16)
+    pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter_sdxl_vit-h.bin")
+    pipeline.image_encoder = CLIPVisionModelWithProjection.from_pretrained(
+        "h94/IP-Adapter", 
+        subfolder="models/image_encoder",
+        torch_dtype=torch.float16,
+    )
+    pipeline.set_ip_adapter_scale(0.3)
+    if lcm_lora:
+        lcm_lora_id = "latent-consistency/lcm-lora-sdxl"
+        pipeline.scheduler = LCMScheduler.from_config(pipeline.scheduler.config)
+        pipeline.load_lora_weights(lcm_lora_id)
     return pipeline

@@ -22,9 +22,17 @@ pip3 install -r requirements.txt
 pip install git+https://github.com/facebookresearch/ImageBind.git --no-deps
 ```
 
+
 ## TODO
+- [x] Dec 4: Added support for [LCM](https://github.com/luosiallen/latent-consistency-model) and [IP-Adapter](https://github.com/tencent-ailab/IP-Adapter)
 - [] Release more checkpoints
 - [] Release Training Code, Data.
+
+## Dec 4: New diffusion models
+
+We incroprate support for LCM and IP_Adapter. LCM can perform inference in just 4 step, while IP-Adapter improve generation quality in some circumstances. Below is a simple comparison
+
+![Img](assets/diffusion_model.jpg)
 
 ## Running
 
