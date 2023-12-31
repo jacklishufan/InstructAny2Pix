@@ -13,7 +13,9 @@ from instructany2pix.llm.mm_utils import KeywordsStoppingCriteria
 from .diffusion.sdxl_img2img_pipeline import build_sdxl,build_sdxl_ip,FakeEncoder
 from instructany2pix.llm.conversation import conv_templates, SeparatorStyle
 import torchaudio
-from diffusers import StableDiffusionXLImg2ImgPipeline,LCMScheduler
+from diffusers import StableDiffusionXLImg2ImgPipeline,LCMScheduler,StableDiffusionXLInpaintPipeline
+import re
+from .gdino.lib import build_segmentator, subject_consistency
 def build_lm(ckpt='ckpts/llm'):
     any2pix_tokenizer = transformers.AutoTokenizer.from_pretrained(
         ckpt,subfolder='tokenizer'
@@ -88,7 +90,7 @@ class REPLACEMENT_TYPE:
 
 class InstructAny2PixPipeline:
 
-    def __init__(self,ckpt='ckpts') -> None:
+    def __init__(self,ckpt='ckpts',llm_folder='llm') -> None:
         model = InstructAny2PixPrior(**prior_config)
         model = model.eval()
         # model.load_state_dict(torch.load('../diffusion_prior.bin',map_location='cpu'))
@@ -108,7 +110,7 @@ class InstructAny2PixPipeline:
                 variant="fp16",
         )
         pipe_inversion.scheduler = new_sch
-        any2pix_tokenizer,any2pix_lm = build_lm(os.path.join(ckpt,'llm'))
+        any2pix_tokenizer,any2pix_lm = build_lm(os.path.join(ckpt,llm_folder))
         model_imb = imagebind_model.imagebind_huge(pretrained=False)
         model_imb.load_state_dict(torch.load(os.path.join(ckpt,'imagebind_huge.pth'),map_location='cpu'))
         model.load_state_dict(torch.load(os.path.join(ckpt,'prior/model.bin'),map_location='cpu'))
@@ -126,7 +128,26 @@ class InstructAny2PixPipeline:
             "stabilityai/stable-diffusion-xl-refiner-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
         )
         self.piperf = self.piperf.to("cuda").to(torch.float16)
+        self.pipe_inpainting = StableDiffusionXLInpaintPipeline(vae=self.pipe_lcm.vae,
+                                 text_encoder=self.pipe_lcm.text_encoder,
+                                 text_encoder_2=self.pipe_lcm.text_encoder_2,
+                                 tokenizer=self.pipe_lcm.tokenizer,
+                                 tokenizer_2=self.pipe_lcm.tokenizer_2,
+                                 unet=self.pipe_lcm.unet,
+                                 scheduler=self.pipe_lcm.scheduler,
+                                 image_encoder=self.pipe_lcm.image_encoder)
         self.cache = None
+        self.sam,self.gdino = build_segmentator(ckpt)
+
+    def reload_inpainting(self):
+        self.pipe_inpainting = StableDiffusionXLInpaintPipeline(vae=self.pipe_lcm.vae,
+                                 text_encoder=self.pipe_lcm.text_encoder,
+                                 text_encoder_2=self.pipe_lcm.text_encoder_2,
+                                 tokenizer=self.pipe_lcm.tokenizer,
+                                 tokenizer_2=self.pipe_lcm.tokenizer_2,
+                                 unet=self.pipe_lcm.unet,
+                                 scheduler=self.pipe_lcm.scheduler,
+                                 image_encoder=self.pipe_lcm.image_encoder)
 
     def forward_llm(self,inst,mm_data=[],use_cache=False):
         if use_cache:
@@ -171,6 +192,8 @@ class InstructAny2PixPipeline:
         base_null = base_null.input_ids[0]
         base_null
         base_tkn = self.any2pix_tokenizer('<base>',add_special_tokens=False)
+        im_gem_tkn = self.any2pix_tokenizer('<im_gen>',add_special_tokens=False).input_ids[0]
+        
         base_tkn = base_tkn.input_ids[0]
         base_tkn
 
@@ -190,11 +213,34 @@ class InstructAny2PixPipeline:
 
         out_seq = output_ids.sequences[:,input_ids.shape[1]:]
         assert len(output_ids.hidden_states) == out_seq.shape[1]
-        gen_idx = torch.where(out_seq.view(-1) == gen_seq)[0][-1].item()
+        im_gem_idx = torch.where(out_seq.view(-1) == im_gem_tkn)[0][-1].item()
+        #print(torch.where(out_seq.view(-1) == gen_seq)[0])
+        #print(torch.where(out_seq.view(-1) == im_gem_tkn)[0])
+        #print("HHHh")
+        all_gen_tokens = torch.where(out_seq.view(-1) == gen_seq)[0]
+        all_gen_tokens = all_gen_tokens[all_gen_tokens >im_gem_idx]
+        #print(all_gen_tokens)
+        gen_idx = all_gen_tokens[0]
+        remaining_tokens = all_gen_tokens[1:]
+        # print(output_ids.hidden_states[gen_idx][-1][:,-1:])
+        # print('----------------')
+        # print(output_ids.hidden_states[-1][-1][:,gen_idx:,0])
+        # print('----------------')
+        # print(output_ids.hidden_states[-2][-1][:,gen_idx:,0])
         with torch.no_grad():
-            image_embeds = self.any2pix_lm.get_model().vae_predictor_image(output_ids.hidden_states[-2][-1][:,-1:]).detach().cpu()
+            image_embeds = self.any2pix_lm.get_model().vae_predictor_image(output_ids.hidden_states[gen_idx][-1][:,-1:]).detach().cpu()
             #image_embeds = image_embeds / image_embeds.norm() * 22
-
+        with torch.no_grad():
+            extra_embeds = []
+            for idx in remaining_tokens:    
+                extra_embeds.append(
+                    self.any2pix_lm.get_model().vae_predictor_image(output_ids.hidden_states[idx][-1][:,-1:]).detach().cpu()[0]
+                )
+        if extra_embeds:
+            extra_embeds = torch.cat(extra_embeds)
+        else:
+            extra_embeds = torch.zeros(0,image_embeds.shape[-1])
+        #print(extra_embeds.shape)
         gen_idx = out_seq.view(-1).tolist().index(base_tkn)+1
         with torch.no_grad():
             base_embed = self.any2pix_lm.get_model().vae_predictor_image(output_ids.hidden_states[gen_idx][-1][:,-1:]).detach().cpu()
@@ -203,9 +249,31 @@ class InstructAny2PixPipeline:
         b = mm_data[base_idx]['fname']
         #assert a == 'image'
         tp = self.any2pix_tokenizer.batch_decode(output_ids.sequences)
-        import re
+        all_objs = self.get_all_objs(tp[0])
+        if len(all_objs) != len(extra_embeds):
+            print("WARNING: Numbers mismatcehd for subjects:")
+            all_objs = []
+        extra_idx = []
+        if all_objs:
+            extra_idx = torch.einsum('ac,bc->ab',extra_embeds.float().detach().cpu() / extra_embeds.norm() * 20,aux_info.float() ).argmax(1)
+            extra_embeds = aux_info[extra_idx]
+        print(tp)
+        # print(re.compile('additions:.*$').findall(tp))
         output_caption = re.compile('\[([^\]]+)\]').findall(tp[0])[0]
-        return image_embeds,base_embed,output_caption,b
+        extra_data = dict(
+            all_objs=all_objs,
+            extra_embeds=extra_embeds,
+            extra_idx=extra_idx,
+        )
+        return image_embeds,base_embed,output_caption,b,extra_data
+    
+    @staticmethod
+    def get_all_objs(s):
+        matched = re.compile('additions:(.*)\</s\>').findall(s)
+        if not matched:
+            return []
+        objs = re.compile('([^:]+):<video>').findall(matched[0])
+        return objs
     
     def loas_base_img(self,base_img_path):
         img_base = Image.open(base_img_path)
@@ -233,7 +301,8 @@ class InstructAny2PixPipeline:
     
     
     def __call__(self, inst,mm_data,alpha = 0.7,h=[0.0,0.4,1.0],norm=20.0,refinement=0.5,llm_only=False,num_inference_steps=25,
-                 use_cache=False,debug=False,diffusion_mode='default') -> Any:
+                 use_cache=False,debug=False,diffusion_mode='default',subject_strength=0.0) -> Any:
+        self.pipe_lcm.set_ip_adapter_scale(0.3)
         if diffusion_mode == 'ipa':
             self.disable_lcm()
             self.pipe_inversion.unet = self.pipe_lcm.unet
@@ -246,8 +315,8 @@ class InstructAny2PixPipeline:
             self.disable_lcm()
             self.pipe_inversion.unet = self.pipe.unet
             self.pipe_inversion.scheduler = DDIMScheduler.from_config(self.pipe_inversion.scheduler.config)
-        image_embeds,base_embed,output_caption,base_img_path = self.forward_llm(inst,mm_data,use_cache=use_cache)
-        self.cache = image_embeds,base_embed,output_caption,base_img_path
+        image_embeds,base_embed,output_caption,base_img_path,extra_data = self.forward_llm(inst,mm_data,use_cache=use_cache)
+        self.cache = image_embeds,base_embed,output_caption,base_img_path,extra_data
         if llm_only:
             return None,None,output_caption
         y = self.model.generate_diffusion(MODALITY.VIDEO,MODALITY.IMAGE,image_embeds / image_embeds.norm() * 100,device='cpu',
@@ -317,6 +386,15 @@ class InstructAny2PixPipeline:
             oo = self.piperf(image=images[0][0],prompt=output_caption+',high quality,well-formed,award-winning',strength=refinement,).images[0]
         else:
             oo = images[0][0]
+        an = None
+        if subject_strength > 9 and len(extra_data['extra_idx'])>0:
+            subject_data = [
+                (k,v) for (k,v,i) in zip(extra_data['all_objs'],extra_data['extra_embeds'],extra_data['extra_idx']) if mm_data[i]['type']=='image'
+            ]
+            self.reload_inpainting()
+            oo,an = subject_consistency(subject_data,output_caption,oo,self.sam,self.gdino,self.pipe_inpainting,subject_strength)
+        else:
+            subject_data = []
         if not debug:
             msg = "SUCCESS!"
         else:
@@ -325,6 +403,8 @@ class InstructAny2PixPipeline:
                        img_base=img_base,
                        latent_la=latent_la,
                        base_embed=base_embed,
+                       annotations=an,
+                       subjec_data=subject_data,
                        y=y[0] / y[0].norm()
             )
 

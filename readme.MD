@@ -25,8 +25,17 @@ pip install git+https://github.com/facebookresearch/ImageBind.git --no-deps
 
 ## TODO
 - [x] Dec 4: Added support for [LCM](https://github.com/luosiallen/latent-consistency-model) and [IP-Adapter](https://github.com/tencent-ailab/IP-Adapter)
+- [x] Dec 30: Added support for Subject Consistency.
 - [] Release more checkpoints
 - [] Release Training Code, Data.
+
+## Dec 30: New checkpoints for subject consistency
+
+We added an experimental feature that supports subject consistency. When this feature is enabled, the edited image will follow additional reference images in addition to the source image. To enable this feature, set `llm_folder="llm-instance"` when initializating the pipeline and pass in `subject_strength=0.7` in the foward pass. Any value larger than zero will do in practice. We recommend 0.6 or 0.7 for a reasonable performance. See more details in updated paper.
+
+![Img](assets/subject.jpg)
+
+
 
 ## Dec 4: New diffusion models
 
@@ -64,3 +73,10 @@ Try to Increase `refinement`, `h_2`, `steps`
 #### Content of image is not intended
 Try to change `seed` and increase `h_1`
 
+
+
+## Acknowledgement
+
+We make use of the following codebase for subject consistency:
+[Segment Anything](https://github.com/facebookresearch/segment-anything)
+[GroundingDINO](https://github.com/IDEA-Research/GroundingDINO)
