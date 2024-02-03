@@ -31,7 +31,9 @@ pip install git+https://github.com/facebookresearch/ImageBind.git --no-deps
 - [] Release Training Code, Data.
 
 
-## Feb 3: We add a new hyperparameter in the demo which allows the user to contol the similarity between source image and results.
+## Feb 3: Input Consistency
+
+We add an new experimental hyperparameter in the demo which allows the user to contol the similarity between source image and results.
 
 ![Img](assets/Consistency.jpg)
 
