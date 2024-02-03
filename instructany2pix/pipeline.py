@@ -241,14 +241,20 @@ class InstructAny2PixPipeline:
         else:
             extra_embeds = torch.zeros(0,image_embeds.shape[-1])
         #print(extra_embeds.shape)
-        gen_idx = out_seq.view(-1).tolist().index(base_tkn)+1
-        with torch.no_grad():
-            base_embed = self.any2pix_lm.get_model().vae_predictor_image(output_ids.hidden_states[gen_idx][-1][:,-1:]).detach().cpu()
-        base_embed = base_embed[0]
-        base_idx = torch.einsum('ac,bc->ab',base_embed.float().detach().cpu() / base_embed.norm() * 20,aux_info.float() )[0].argmax().item()
+        tp = self.any2pix_tokenizer.batch_decode(output_ids.sequences)
+        print(tp)
+        if len(mm_data) == 1:
+            base_idx = 0
+            base_embed = aux_info[0]
+        else:
+            gen_idx = out_seq.view(-1).tolist().index(base_tkn)+1
+            with torch.no_grad():
+                base_embed = self.any2pix_lm.get_model().vae_predictor_image(output_ids.hidden_states[gen_idx][-1][:,-1:]).detach().cpu()
+            base_embed = base_embed[0]
+            base_idx = torch.einsum('ac,bc->ab',base_embed.float().detach().cpu() / base_embed.norm() * 20,aux_info.float() )[0].argmax().item()
         b = mm_data[base_idx]['fname']
         #assert a == 'image'
-        tp = self.any2pix_tokenizer.batch_decode(output_ids.sequences)
+        
         all_objs = self.get_all_objs(tp[0])
         if len(all_objs) != len(extra_embeds):
             print("WARNING: Numbers mismatcehd for subjects:")
@@ -257,7 +263,7 @@ class InstructAny2PixPipeline:
         if all_objs:
             extra_idx = torch.einsum('ac,bc->ab',extra_embeds.float().detach().cpu() / extra_embeds.norm() * 20,aux_info.float() ).argmax(1)
             extra_embeds = aux_info[extra_idx]
-        print(tp)
+        
         # print(re.compile('additions:.*$').findall(tp))
         output_caption = re.compile('\[([^\]]+)\]').findall(tp[0])[0]
         extra_data = dict(
@@ -301,7 +307,7 @@ class InstructAny2PixPipeline:
     
     
     def __call__(self, inst,mm_data,alpha = 0.7,h=[0.0,0.4,1.0],norm=20.0,refinement=0.5,llm_only=False,num_inference_steps=25,
-                 use_cache=False,debug=False,diffusion_mode='default',subject_strength=0.0) -> Any:
+                 use_cache=False,debug=False,diffusion_mode='default',subject_strength=0.0,cfg=10) -> Any:
         self.pipe_lcm.set_ip_adapter_scale(0.3)
         if diffusion_mode == 'ipa':
             self.disable_lcm()
@@ -363,7 +369,7 @@ class InstructAny2PixPipeline:
                 negative_prompt="monochrome, lowres, bad anatomy, worst quality, low quality", 
                 ip_adapter_image=latent_la,
                 num_inference_steps=num_inference_steps,
-                guidance_scale=10,
+                guidance_scale=cfg,
                 **extra_kwargs)
         elif diffusion_mode == 'ipa_lcm':
             self.enable_lcm()
@@ -380,19 +386,22 @@ class InstructAny2PixPipeline:
             width=1024,
             prompt_embeds=latent_la.to(torch.bfloat16).cuda(),
             pooled_prompt_embeds=null_prompt_embeds.to(torch.bfloat16).cuda(), generator=None,
-                num_inference_steps=num_inference_steps,guidance_scale=10,**extra_kwargs)
+                num_inference_steps=num_inference_steps,guidance_scale=cfg,**extra_kwargs)
         non_refined =  images[0][0]
         if refinement > 0:
             oo = self.piperf(image=images[0][0],prompt=output_caption+',high quality,well-formed,award-winning',strength=refinement,).images[0]
         else:
             oo = images[0][0]
         an = None
-        if subject_strength > 9 and len(extra_data['extra_idx'])>0:
+        if subject_strength > 0 and len(extra_data['extra_idx'])>0:
             subject_data = [
                 (k,v) for (k,v,i) in zip(extra_data['all_objs'],extra_data['extra_embeds'],extra_data['extra_idx']) if mm_data[i]['type']=='image'
             ]
             self.reload_inpainting()
-            oo,an = subject_consistency(subject_data,output_caption,oo,self.sam,self.gdino,self.pipe_inpainting,subject_strength)
+            try:
+                oo,an = subject_consistency(subject_data,output_caption,oo,self.sam,self.gdino,self.pipe_inpainting,subject_strength)
+            except:
+                an = {}
         else:
             subject_data = []
         if not debug:

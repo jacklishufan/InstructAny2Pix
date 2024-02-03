@@ -20,7 +20,9 @@ def load_image_and_transform(image_path):
 
 def get_mask(ph,boxes,phrases,predictor,i=0,d=40,e=10,b=0):
     base = np.zeros((1024,1024,3),dtype=np.uint8)
-    box = boxes[np.array(phrases)==ph][i]
+    #print(phrases,ph,np.array(phrases)==ph)
+    zz = [(ph in x or x in ph) for x in phrases ]
+    box = boxes[np.array(zz)][i]
     box = box * 1024
     box = box.int().numpy()
     pt1 = (box[0]-box[2]//2,box[1]-box[3]//2)

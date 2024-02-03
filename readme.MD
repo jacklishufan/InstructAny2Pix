@@ -26,8 +26,15 @@ pip install git+https://github.com/facebookresearch/ImageBind.git --no-deps
 ## TODO
 - [x] Dec 4: Added support for [LCM](https://github.com/luosiallen/latent-consistency-model) and [IP-Adapter](https://github.com/tencent-ailab/IP-Adapter)
 - [x] Dec 30: Added support for Subject Consistency.
+- [x] Feb 3: Added support for Cfg Control .
 - [] Release more checkpoints
 - [] Release Training Code, Data.
+
+
+## Feb 3: We add a new hyperparameter in the demo which allows the user to contol the similarity between source image and results.
+
+![Img](assets/Consistency.jpg)
+
 
 ## Dec 30: New checkpoints for subject consistency
 
