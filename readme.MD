@@ -27,9 +27,7 @@ pip install git+https://github.com/facebookresearch/ImageBind.git --no-deps
 - [x] Dec 4: Added support for [LCM](https://github.com/luosiallen/latent-consistency-model) and [IP-Adapter](https://github.com/tencent-ailab/IP-Adapter)
 - [x] Dec 30: Added support for Subject Consistency.
 - [x] Feb 3: Added support for Cfg Control .
-- [] Release more checkpoints
-- [] Release Training Code, Data.
-
+- [] May 23: We temporally unlisted the model checkpoint due to [safety concerns](https://laion.ai/notes/laion-maintenance/) regarding LAION. We plan to retrain the model with clean data in near future.
 
 ## Feb 3: Input Consistency
 
