@@ -81,19 +81,24 @@ def subject_consistency(subjec_data,output_caption,img,sam,gdino,pipe_inpainting
     )
     annotated_frame = annotate(image_source=image_source, boxes=boxes, logits=logits, phrases=phrases)
     subject = img
-    pipe_inpainting.set_ip_adapter_scale(0.5)
+    # pipe_inpainting.set_ip_adapter_scale(0.5)
     for ph,emb in  subjec_data:
         ph = ph.replace('.','').replace("'s",'')
         msk = get_mask(ph,boxes,phrases,sam,i=0,d=40,b=20)
-        subject = pipe_inpainting(
+        print(f"Subject Embed: {emb.shape}")
+        subject = pipe_inpainting.generate(
                         image=subject,
                         mask_image=torch.tensor(np.array(msk)),
+                        pil_image=None,
                         strength=subject_strength,
-                        prompt='best quality, high quality'+output_caption, 
+                        #prompt='best quality, high quality',#+output_caption, 
                         #negative_prompt="monochrome, lowres, bad anatomy, worst quality, low quality", 
-                        ip_adapter_image=emb.unsqueeze(0),
-                        num_inference_steps=20,
-                        guidance_scale=10,
-                        )[0][0]
+                        clip_image_embeds_local=emb[None],
+                        mode='local',
+                        num_inference_steps=50,
+                        # seed=0,
+                        # guidance_scale=5,
+                        scale=0.8,
+                        )[0]
         
     return subject,annotated_frame

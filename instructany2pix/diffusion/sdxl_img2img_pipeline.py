@@ -86,18 +86,20 @@ class FakeEncoder(ModelMixin):
     def forward(self,x):
         return FakeImage(x)
     
-def build_sdxl_ip(lcm_lora=True):
-    pipeline = StableDiffusionXLPipeline .from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16)
-    pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter_sdxl_vit-h.bin")
-    pipeline.image_encoder = CLIPVisionModelWithProjection.from_pretrained(
-        "h94/IP-Adapter", 
-        subfolder="models/image_encoder",
-        torch_dtype=torch.float16,
-    )
-    pipeline.set_ip_adapter_scale(0.3)
-    if lcm_lora:
-        lcm_lora_id = "latent-consistency/lcm-lora-sdxl"
-        pipeline.scheduler = LCMScheduler.from_config(pipeline.scheduler.config)
-        pipeline.load_lora_weights(lcm_lora_id)
-    return pipeline
+    
+build_sdxl_ip = None # legacy
+# def build_sdxl_ip(lcm_lora=True):
+#     pipeline = StableDiffusionXLPipeline .from_pretrained(
+#     "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16)
+#     pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter_sdxl_vit-h.bin")
+#     pipeline.image_encoder = CLIPVisionModelWithProjection.from_pretrained(
+#         "h94/IP-Adapter", 
+#         subfolder="models/image_encoder",
+#         torch_dtype=torch.float16,
+#     )
+#     pipeline.set_ip_adapter_scale(0.3)
+#     if lcm_lora:
+#         lcm_lora_id = "latent-consistency/lcm-lora-sdxl"
+#         pipeline.scheduler = LCMScheduler.from_config(pipeline.scheduler.config)
+#         pipeline.load_lora_weights(lcm_lora_id)
+#     return pipeline
