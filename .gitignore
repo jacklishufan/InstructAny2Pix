@@ -3,3 +3,6 @@
 # ckpts
 sync.sh
 test*.ipynb
+scripts/train_local.sh
+local/
+MM-Inst-Train/

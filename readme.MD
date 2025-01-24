@@ -32,6 +32,10 @@ pip install git+https://github.com/facebookresearch/ImageBind.git --no-deps
 - [x] May 23: We temporally unlisted the model checkpoint due to [safety concerns](https://laion.ai/notes/laion-maintenance/) regarding LAION. We plan to retrain the model with clean data in near future.
 - [x] Jun 30: We released retrained model on filtered clean data. See [New Demo Notebook](Demo-Retrained.ipynb) for use cases
 - [x] Jul 20: We released Evaluation Dataset at [Huggingface](https://huggingface.co/datasets/jacklishufan/mm-instruct/tree/main).
+- 2024:
+- [x] Jan 23: Paper Accpeted to NAACL 2025 Findings
+- [x] Jan 23: We released the training code. See  [Readme](scripts/train.md) for details
+
 ## Checkpoints
 
 Checkpoints of Diffusion Model and LLM is available at [https://huggingface.co/jacklishufan/instructany2pix_retrained/].
